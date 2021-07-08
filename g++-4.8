@@ -1,0 +1,47 @@
+#!/bin/sh
+
+# Use a docker image.  Build the image as needed.
+image=gcc-4.8
+
+>/dev/null docker build -t "$image" - <<END_DOCKERFILE
+FROM centos:7
+
+RUN yum makecache && \
+    yum -y install epel-release
+RUN yum makecache && \
+    yum -y install gcc gcc-c++
+
+RUN mkdir /workdir
+VOLUME /workdir
+WORKDIR /workdir
+
+ENTRYPOINT ["g++"]
+CMD ["--help"]
+END_DOCKERFILE
+
+# Prepare the command line arguments for the container.
+#
+# Path-like command line arguments must be fully resolved and then prefixed
+# with the WORKDIR of the image (specified in the above Dockerfile).
+#
+# Option-like command line arguments are left alone.
+#
+# Dealing with lists of arguments, each of which might contain whitespaces, is
+# tricky.  The best way in POSIX shell is to use the arguments ($1, $2, ...) of
+# a function.
+resolve_path_args() {
+    while [ $# -ne 0 ]; do
+        case "$1" in
+          "-"*) echo "$1" ;;
+          *)  echo /workdir/"$(realpath "$1")" ;;
+        esac
+        shift
+    done
+}
+
+resolve_path_args "$@" | xargs docker run \
+       --rm \
+       --interactive \
+       --mount type=bind,source=/,destination=/workdir \
+       "--workdir=/workdir/$(pwd)" \
+       "$image"
